@@ -75,7 +75,7 @@ DWORD WINAPI Thread(LPVOID lp)
 DWORD WINAPI Run(LPVOID lp)
 {//调度进程
 	long t1,t2;
-	PCB *PCB_ptr = NULL;
+	PCB *PCB_ptr = NULL,*PCB_ptr_HPrio = NULL,*PCB_ptr_preHPrio = NULL;//PCB临时指针，指向当前就绪队列中优先级最高进程、优先级最高进程前一个进程
 	InInfo *tInf = NULL;
 	while (1)
 	{
@@ -99,6 +99,116 @@ DWORD WINAPI Run(LPVOID lp)
 				if (ProcMap->Running)//有进程在执行
 				{
 					ProcMap->Running->Totaltime += 50;//总运行时间递增
+				}
+				break;
+			case 2://非抢占优先级调度
+				PCB_ptr = ProcMap->Ready->next;
+				if (!ProcMap->Running && PCB_ptr)//没有进程在执行状态，并且就绪队列有进程
+				{
+					PCB_ptr_preHPrio = ProcMap->Ready;//待调度进程的前驱结点
+					PCB_ptr_HPrio = PCB_ptr;//等待调度的当前就绪队列中优先级最高的进程
+					while (PCB_ptr->next)
+					{//遍历整个就绪队列，找到当前就绪队列中优先级最高的进程
+						if (PCB_ptr->next->Priority < PCB_ptr_HPrio->Priority)//遍历到的就绪队列进程的优先级更高
+						{
+							PCB_ptr_HPrio = PCB_ptr->next;
+							PCB_ptr_preHPrio = PCB_ptr;
+						}
+						PCB_ptr = PCB_ptr->next;
+					}
+					ProcMap->Running = PCB_ptr_HPrio;//将优先级最高进程调度到处理机
+					PCB_ptr_preHPrio->next = PCB_ptr_HPrio->next;
+					PCB_ptr_HPrio->next = NULL;//被调度的进程脱离就绪队列
+					if (ProcMap->Running->PID == 0)
+					{
+						tInf = (InInfo*)malloc(sizeof(InInfo));
+						tInf->hEvt = ProcMap->Running->hEvt;
+						strcpy(tInf->ProcessName,ProcMap->Running->ProcessName);
+						ProcMap->Running->hThread = CreateThread(NULL,0,Thread,tInf,NULL,&(ProcMap->Running->PID));//创建线程
+					}
+					SetEvent(ProcMap->Running->hEvt);//激活启动
+				}
+				if (ProcMap->Running)//有进程在执行
+				{
+					ProcMap->Running->Totaltime += 50;//总运行时间递增
+				}
+				break;
+			case 3://抢占优先级调度
+				PCB_ptr = ProcMap->Ready->next;
+				if (PCB_ptr)//就绪队列有进程
+				{
+					PCB_ptr_preHPrio = ProcMap->Ready;//待调度进程的前驱结点
+					PCB_ptr_HPrio = PCB_ptr;//等待调度的当前就绪队列中优先级最高的进程
+					while (PCB_ptr->next)
+					{//遍历整个就绪队列，找到当前就绪队列中优先级最高的进程
+						if (PCB_ptr->next->Priority < PCB_ptr_HPrio->Priority)//遍历到的就绪队列进程的优先级更高
+						{
+							PCB_ptr_HPrio = PCB_ptr->next;
+							PCB_ptr_preHPrio = PCB_ptr;
+						}
+						PCB_ptr = PCB_ptr->next;
+					}
+					if ((ProcMap->Running && PCB_ptr_HPrio->Priority < ProcMap->Running->Priority) ||
+						(!ProcMap->Running))
+					{//处理机中有正在执行的进程，并且正在运行的进程优先级小于抢占的进程；或处理机无正在运行的进程
+						if (ProcMap->Running)
+						{//处理机中有正在执行的进程
+							ResetEvent(ProcMap->Running->hEvt);//暂停模拟线程
+							PCB_ptr = ProcMap->Ready;
+							while (PCB_ptr->next)
+							{
+								PCB_ptr = PCB_ptr->next;
+							}
+							ProcMap->Running->next = PCB_ptr->next;
+							PCB_ptr->next = ProcMap->Running;//被抢占的进程插入到队尾
+							ProcMap->Running = NULL;
+						}
+						ProcMap->Running = PCB_ptr_HPrio;//将优先级最高进程调度到处理机
+						PCB_ptr_preHPrio->next = PCB_ptr_HPrio->next;
+						PCB_ptr_HPrio->next = NULL;//被调度的进程脱离就绪队列
+						if (ProcMap->Running->PID == 0)
+						{
+							tInf = (InInfo*)malloc(sizeof(InInfo));
+							tInf->hEvt = ProcMap->Running->hEvt;
+							strcpy(tInf->ProcessName,ProcMap->Running->ProcessName);
+							ProcMap->Running->hThread = CreateThread(NULL,0,Thread,tInf,NULL,&(ProcMap->Running->PID));//创建线程
+						}
+						SetEvent(ProcMap->Running->hEvt);//激活启动
+					}
+				}
+				if (ProcMap->Running)//有进程在执行
+				{
+					ProcMap->Running->Totaltime += 50;//总运行时间递增
+				}
+				break;
+			case 4://RR调度
+				PCB_ptr = ProcMap->Ready->next;
+				if (PCB_ptr)
+				{//就绪队列有进程
+					if (ProcMap->Running)
+					{//有进程正在使用处理机，暂停并插入就绪队列尾
+						ProcMap->Running->Totaltime += 50;//总运行时间递增
+						ResetEvent(ProcMap->Running->hEvt);//暂停模拟线程
+						PCB_ptr = ProcMap->Ready;
+						while (PCB_ptr->next)
+						{
+							PCB_ptr = PCB_ptr->next;
+						}
+						ProcMap->Running->next = PCB_ptr->next;
+						PCB_ptr->next = ProcMap->Running;//被抢占的进程插入到队尾
+						ProcMap->Running = NULL;
+					}
+					ProcMap->Running = ProcMap->Ready->next;//就绪队列队头进程分配到处理机
+					ProcMap->Ready->next = ProcMap->Running->next;
+					ProcMap->Running->next = NULL;//队头进程脱离就绪队列
+					if (ProcMap->Running->PID == 0)
+					{
+						tInf = (InInfo*)malloc(sizeof(InInfo));
+						tInf->hEvt = ProcMap->Running->hEvt;
+						strcpy(tInf->ProcessName,ProcMap->Running->ProcessName);
+						ProcMap->Running->hThread = CreateThread(NULL,0,Thread,tInf,NULL,&(ProcMap->Running->PID));//创建线程
+					}
+					SetEvent(ProcMap->Running->hEvt);//激活启动
 				}
 				break;
 		}
@@ -161,6 +271,7 @@ int WakeUp(void)
 	DWORD tPID;
 	PCB *PCB_ptr = ProcMap->Blocked;//指向预恢复的进程PCB的前一个节点
 	PCB *PCB_ins = NULL;//指向预恢复的进程PCB
+	char t;//用于清空缓冲区
 	system("cls");
 	printf("Input PID in blocked list to wakeup:");
 	scanf("%ld",&tPID);
@@ -187,7 +298,7 @@ int WakeUp(void)
 		PCB_ptr->next = PCB_ins;//就绪队列尾部插入进程
 		printf("Process %ld has been waken up to the Ready list!\n",tPID);
 	}
-
+	while ((t = getchar()) != '\n' && t != EOF)	;//清空缓冲区
 	getch();
 	return 0;
 }
@@ -257,20 +368,20 @@ int ShowProcMap(void)
 	system("cls");
 	printf("Running Process:\n");
 	if (ProcMap->Running)
-		printf("ProcessName: %s\nPID: %ld\n",ProcMap->Running->ProcessName,ProcMap->Running->PID);
+		printf("ProcessName: %s\nPID: %ld\nRunTime: %ld ms\nPriority: %d\n",ProcMap->Running->ProcessName,ProcMap->Running->PID,ProcMap->Running->Totaltime,ProcMap->Running->Priority);
 	printf("-----------------------------------------\nReady Processes:\n");
 	PCB_ptr = ProcMap->Ready;
 	while (PCB_ptr->next)
 	{
 		PCB_ptr = PCB_ptr->next;
-		printf("ProcessName: %s\nPID: %ld\n\n",PCB_ptr->ProcessName,PCB_ptr->PID);
+		printf("ProcessName: %s\nPID: %ld\nRunTime: %ld ms\nPriority: %d\n\n",PCB_ptr->ProcessName,PCB_ptr->PID,PCB_ptr->Totaltime,PCB_ptr->Priority);
 	}
 	printf("-----------------------------------------\nBlocked Processes:\n");
 	PCB_ptr = ProcMap->Blocked;
 	while (PCB_ptr->next)
 	{
 		PCB_ptr = PCB_ptr->next;
-		printf("ProcessName: %s\nPID: %ld\n\n",PCB_ptr->ProcessName,PCB_ptr->PID);
+		printf("ProcessName: %s\nPID: %ld\nRunTime: %ld ms\nPriority: %d\n\n",PCB_ptr->ProcessName,PCB_ptr->PID,PCB_ptr->Totaltime,PCB_ptr->Priority);
 	}
 	printf("-----------------------------------------\nPress any key to continue..\n");
 	getch();
@@ -316,7 +427,10 @@ int SelectRunMode(void)
 	{
 		system("cls");
 		printf("1.FCFS\n");
-		printf("Press KeyCode(1-1):");
+		printf("2.NP-PSA\n");
+		printf("3.P-PSA\n");
+		printf("4.RR\n");
+		printf("Press KeyCode(1-4):");
 		ch = getch();
 		printf("%c",ch);
 		switch (ch)
@@ -324,6 +438,18 @@ int SelectRunMode(void)
 			case '1':
 				method = 1;//调度方式为1
 				hTH = CreateThread(NULL,0,Run,NULL,0,NULL);//FCFS调度
+				break;
+			case '2':
+				method = 2;//调度方式为2
+				hTH = CreateThread(NULL,0,Run,NULL,0,NULL);//非抢占优先级调度
+				break;
+			case '3':
+				method = 3;//调度方式为3
+				hTH = CreateThread(NULL,0,Run,NULL,0,NULL);//抢占优先级调度
+				break;
+			case '4':
+				method = 4;//调度方式为4
+				hTH = CreateThread(NULL,0,Run,NULL,0,NULL);//时间片轮询调度
 				break;
 			default:
 				printf("\nError Input!\nPress any key to retry.\n");
@@ -341,6 +467,7 @@ int main(void)
 	InitProcessMap(&ProcMap);//创建进程表
 	MainHwnd = GetConsoleWindow();
 	SelectRunMode();
+	
 	do
 	{
 		system("cls");
