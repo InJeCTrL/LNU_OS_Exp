@@ -179,6 +179,11 @@ int Request(void)
 			PStbl.Need[ProcIndex][i] -= R[i];//Need--
 			Available[i] -= R[i];
 		}
+		if (AllOver[ProcIndex])
+		{//若请求资源的进程已满足Max(已完全结束)，归还其已分配的资源
+			for (i=0;i<ResNum;i++)
+				Available[i] += PStbl.Allocation[ProcIndex][i];
+		}
 	}
 	for (i=0;i<ProcNum;i++)
 	{
