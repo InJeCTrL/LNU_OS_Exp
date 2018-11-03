@@ -1,7 +1,7 @@
 #include<stdio.h>
 #include<conio.h>
 #include<stdlib.h>
-#define VeryLittle 10//最小剩余碎片大小
+#define VeryLittle 4//最小剩余碎片大小
 typedef struct FreeArea
 {
 	long ImageBase;//分区起始地址
@@ -111,23 +111,18 @@ int MemFFAllocate(int ID,long _Size,long *ImageBase)
 				}
 				return 0;
 			}
-			else
-			{//当前无合适分区
-				printf("\n分配失败！ - 无可满足资源大小的分区\n");
-				return 1;
-			}
 		}
-		else
-		{
-			printf("\n分配失败！ - 用户区已全部被分配\n");
-			return 1;
-		}
+	}
+	if (i == MemInf->FreeNum)
+	{
+		printf("\n分配失败！ - 无可满足资源大小的分区\n");
+		return 1;
 	}
 	return 0;
 }
 int MemFFFree(int ID)
 {//适用于首次适应的内存释放算法
-	int i,j;
+	int i,j,ti;
 	int fore = 0,next = 0;//标志上下邻接
 	int nexti;//记录下一个非邻接分区号
 	long tIB,tSize;//临时保存预释放的内存分区的起始地址和大小
@@ -150,13 +145,22 @@ int MemFFFree(int ID)
 				MemInf->FreeAreaTbl[i].Size += tSize;
 				tSize = MemInf->FreeAreaTbl[i].Size;
 				tIB = MemInf->FreeAreaTbl[i].ImageBase;
+				ti = i;
 				fore = 1;
 			}
 			else if (MemInf->FreeAreaTbl[i].ImageBase == tIB + tSize)
 			{//若空闲表中有下邻接，则行下合并
-				MemInf->FreeAreaTbl[i].Size += tSize;
-				MemInf->FreeAreaTbl[i].ImageBase -= tSize;
-				tSize = MemInf->FreeAreaTbl[i].Size;
+				if (fore == 1)
+				{//三区合并
+					MemInf->FreeAreaTbl[i].Status = 0;
+					MemInf->FreeAreaTbl[ti].Size = MemInf->FreeAreaTbl[i].Size;
+					MemInf->FreeAreaTbl[ti].Size += tSize;
+				}
+				else
+				{//下合并
+					MemInf->FreeAreaTbl[i].Size += tSize;
+					MemInf->FreeAreaTbl[i].ImageBase -= tSize;
+				}
 				next = 1;
 			}
 		}
@@ -180,22 +184,6 @@ int MemFFFree(int ID)
 		else
 		{
 			nexti = i;
-			/*i--;
-			if (i <= 0)
-			{//若需要插在第一个空闲分区前
-				MemInf->FreeNum++;
-				MemInf->FreeAreaTbl = (FreeArea*)realloc(MemInf->FreeAreaTbl,MemInf->FreeNum*sizeof(FreeArea));//扩充空闲分区表容量
-				for (j=MemInf->FreeNum-1;j>=1;j--)
-				{//空闲分区表后移
-					MemInf->FreeAreaTbl[j].ImageBase = MemInf->FreeAreaTbl[j-1].ImageBase;
-					MemInf->FreeAreaTbl[j].Size = MemInf->FreeAreaTbl[j-1].Size;
-					MemInf->FreeAreaTbl[j].Status = MemInf->FreeAreaTbl[j-1].Status;
-				}
-				MemInf->FreeAreaTbl[i].ImageBase = tIB;
-				MemInf->FreeAreaTbl[i].Size = tSize;
-				MemInf->FreeAreaTbl[i].Status = 1;//直接加入
-				return 0;
-			}*/
 			while (i > 0 && (!MemInf->FreeAreaTbl[i].Status) || MemInf->FreeAreaTbl[i].ImageBase + MemInf->FreeAreaTbl[i].Size < tIB)
 			{
 				i--;
@@ -237,52 +225,9 @@ int MemFFFree(int ID)
 				MemInf->FreeAreaTbl[nexti].Status = 1;//直接加入
 				return 0;
 			}
-			/*
-			if (i == 0)
-			{//若需要插在第一个空闲分区前
-				MemInf->FreeNum++;
-				MemInf->FreeAreaTbl = (FreeArea*)realloc(MemInf->FreeAreaTbl,MemInf->FreeNum*sizeof(FreeArea));//扩充空闲分区表容量
-				for (j=MemInf->FreeNum-1;j>=1;j--)
-				{//空闲分区表后移
-					MemInf->FreeAreaTbl[j].ImageBase = MemInf->FreeAreaTbl[j-1].ImageBase;
-					MemInf->FreeAreaTbl[j].Size = MemInf->FreeAreaTbl[j-1].Size;
-					MemInf->FreeAreaTbl[j].Status = MemInf->FreeAreaTbl[j-1].Status;
-				}
-				MemInf->FreeAreaTbl[i].ImageBase = tIB;
-				MemInf->FreeAreaTbl[i].Size = tSize;
-				MemInf->FreeAreaTbl[i].Status = 1;//直接加入
-				return 0;
-			}
-			else
-			{
-				
-				MemInf->FreeNum++;
-				MemInf->FreeAreaTbl = (FreeArea*)realloc(MemInf->FreeAreaTbl,MemInf->FreeNum*sizeof(FreeArea));//扩充空闲分区表容量
-				for (j=MemInf->FreeNum-1;j>=1;j--)
-				{//空闲分区表后移
-					MemInf->FreeAreaTbl[j].ImageBase = MemInf->FreeAreaTbl[j-1].ImageBase;
-					MemInf->FreeAreaTbl[j].Size = MemInf->FreeAreaTbl[j-1].Size;
-					MemInf->FreeAreaTbl[j].Status = MemInf->FreeAreaTbl[j-1].Status;
-				}
-				MemInf->FreeAreaTbl[i].ImageBase = tIB;
-				MemInf->FreeAreaTbl[i].Size = tSize;
-				MemInf->FreeAreaTbl[i].Status = 1;//直接加入
-				return 0;
-			}
-			*/
 		}
 
 	}
-	/*
-
-	if (i == MemInf->AllocNum)
-	{//空闲分区表无状态为0
-		MemInf->AllocNum += 10;
-		MemInf->AllocAreaTbl = (AllocArea*)realloc(MemInf->AllocAreaTbl,MemInf->AllocNum*sizeof(AllocArea));//扩充分区使用表容量
-		for (i=MemInf->AllocNum-1;i>=MemInf->AllocNum-9;i--)
-			MemInf->AllocAreaTbl[i].Status = 0;
-		MovetoAllocTbl(ID,_Size,ImageBase);//再次查找
-	}*/
 	return 0;
 }
 int ShowMemInfo(void)
